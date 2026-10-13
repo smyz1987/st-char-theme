@@ -313,6 +313,14 @@ function injectButton() {
             left: Math.max(8, Math.min(r.left, window.innerWidth - pw - 8)) + 'px',
         });
         bindPanelEvents(cur, bind);
+        // 已绑定主题行滚动到可见（方便打开面板时直接看到当前绑定）
+        if (bind && bind.theme) {
+            const $row = $panel.find('.st-ct-row.st-ct-bound');
+            const $list = $panel.find('.st-ct-list');
+            if ($row.length && $list.length) {
+                $list.scrollTop(Math.max(0, $row[0].offsetTop - $list[0].offsetTop - 20));
+            }
+        }
     });
     updateBtnDot();
 }
