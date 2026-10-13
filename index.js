@@ -180,14 +180,14 @@ function closePanel() {
 }
 
 function injectButton() {
-    const $pop = $('#character_popup');
-    if (!$pop.length || !$pop.is(':visible')) return;
+    const $panel = $('#rm_ch_create_block');
+    if (!$panel.length || !$panel.is(':visible')) return;
     const $btn = $('#' + BTN_ID);
     if ($btn.length) { refreshBinding(); return; }
-    const $text = $('#character_popup_text');
-    if (!$text.length) return;
+    const $anchor = $('#favorite_button');
+    if (!$anchor.length) return;
     const $b = $('<div id="' + BTN_ID + '" class="st-ct-btn" title="绑定主题美化到这张角色卡">' + PEACH_SVG + '</div>');
-    $text.append($b);
+    $anchor.after($b);
     $b.on('click', function (e) {
         e.stopPropagation();
         if ($('#' + PANEL_ID).length) { closePanel(); return; }
@@ -207,13 +207,15 @@ function injectButton() {
     refreshBinding();
 }
 
-// 轮询：角色卡弹窗打开时注入桃子按钮
+// 轮询：角色编辑面板打开时注入桃子按钮
 setInterval(function () {
-    const $pop = $('#character_popup');
-    if ($pop.length && $pop.is(':visible')) {
+    const $panel = $('#rm_ch_create_block');
+    if ($panel.length && $panel.is(':visible')) {
         injectButton();
     } else if ($('#' + PANEL_ID).length) {
         closePanel();
+        const $btn = $('#' + BTN_ID);
+        if ($btn.length) $btn.remove();
     }
 }, 400);
 
@@ -230,7 +232,7 @@ if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-#st-ct-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-left:8px; cursor:pointer; position:relative; vertical-align:middle; opacity:.85; transition:opacity .15s, transform .15s; }
+#st-ct-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-left:6px; cursor:pointer; position:relative; vertical-align:middle; opacity:.85; transition:opacity .15s, transform .15s; background:rgba(217,167,167,.22); border-radius:6px; padding:2px; box-sizing:content-box; }
 #st-ct-btn:hover { opacity:1; transform:scale(1.12); }
 #st-ct-btn.st-ct-has-bind::after { content:''; position:absolute; top:-1px; right:-1px; width:7px; height:7px; border-radius:50%; background:#E8A0A0; border:1px solid #fff; }
 .st-ct-panel { position:fixed; z-index:99999; width:220px; max-height:300px; overflow-y:auto; background:var(--SmartThemeBlurTintColor,#1e1e2e); color:var(--SmartThemeMainColor,#e0e0e0); border:1px solid var(--SmartThemeBorderColor,#666); border-radius:10px; padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.35); font-size:13px; }
