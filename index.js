@@ -83,10 +83,45 @@ function getCurrentChar() {
         const ctx = getContext();
         let id = (ctx && typeof ctx.characterId !== 'undefined') ? ctx.characterId : -1;
         if (id < 0 && typeof character_id !== 'undefined') id = character_id;
-        if (id < 0 || !ctx || !ctx.characters || !ctx.characters[id]) return null;
+        if (id < 0 || !ctx || !ctx.characters || !ctx.characters[id]) {
+            // fallback：编辑面板头像字段（首页角色库直接编辑、未进入聊天时）
+            const $av = $('#avatar_url_pole');
+            if ($av.length) {
+                const v = String($av.val() || '').trim();
+                if (v) {
+                    const fn = v.split(/[\\/]/).pop();
+                    return fn || null;
+                }
+            }
+            return null;
+        }
         const c = ctx.characters[id];
         return c && c.avatar ? c.avatar : null;
     } catch { return null; }
+}
+// 当前角色的显示名（用于匹配专属美化）：优先读编辑面板的角色名输入框，兜底用聊天上下文
+function getCurrentCharName() {
+    try {
+        const $name = $('#character_name_pole, #character_name').first();
+        if ($name.length) {
+            const v = String($name.val() || '').trim();
+            if (v) return v;
+        }
+        const ctx = getContext();
+        let id = (ctx && typeof ctx.characterId !== 'undefined') ? ctx.characterId : -1;
+        if (id < 0 && typeof character_id !== 'undefined') id = character_id;
+        if (id < 0 || !ctx || !ctx.characters || !ctx.characters[id]) return '';
+        const c = ctx.characters[id];
+        return c ? String(c.name || '') : '';
+    } catch { return ''; }
+}
+// 专属匹配：主题名与角色名存在完全包含关系（双向），长度须 >1 防误判
+function matchOwnTheme(themeName, charName) {
+    if (!charName) return false;
+    const t = String(themeName || '').toLowerCase().trim();
+    const c = String(charName).toLowerCase().trim();
+    if (!t || !c || t.length <= 1 || c.length <= 1) return false;
+    return t.includes(c) || c.includes(t);
 }
 function onCharChanged() {
     const cur = getCurrentChar();
@@ -120,11 +155,16 @@ function escapeHtml(s) {
 function buildPanelHTML(curChar, curBind) {
     const themes = themeList();
     const curTheme = currentTheme();
-    let rows = themes.map(t => {
+    const charName = getCurrentCharName();
+    const own = themes.filter(t => matchOwnTheme(t, charName));
+    const ordered = own.concat(themes.filter(t => !matchOwnTheme(t, charName)));
+    let rows = ordered.map(t => {
         const isBound = (curBind && t === curBind.theme);
         const isActive = (!curBind && t === curTheme);
-        return '<div class="st-ct-row' + (isBound ? ' st-ct-bound' : '') + '" data-theme="' + escapeHtml(t) + '">' +
+        const isOwn = own.includes(t);
+        return '<div class="st-ct-row' + (isBound ? ' st-ct-bound' : '') + (isOwn ? ' st-ct-own' : '') + '" data-theme="' + escapeHtml(t) + '">' +
             '<span class="st-ct-row-name">' + escapeHtml(t) + '</span>' +
+            (isOwn ? '<span class="st-ct-row-tag st-ct-own-tag">专属</span>' : '') +
             (isBound ? '<span class="st-ct-row-tag">已绑定</span>' : (isActive ? '<span class="st-ct-row-tag">当前</span>' : '')) +
             '</div>';
     }).join('');
@@ -133,13 +173,18 @@ function buildPanelHTML(curChar, curBind) {
     if (curBind) {
         curLine = '已绑定：' + escapeHtml(curBind.theme) + (curBind.autoApply ? '（进入自动切换）' : '（自动切换已关闭）');
     }
+    let ownHint = '';
+    if (own.length) {
+        ownHint = '<div class="st-ct-own-hint">已匹配 ' + own.length + ' 个专属美化（名字与角色重叠），已排在列表最前</div>';
+    }
     let footer = '<label class="st-ct-auto"><input type="checkbox" id="st-ct-auto"' + (!curBind || curBind.autoApply ? ' checked' : '') + '> 进入该角色时自动切换</label>';
     if (curBind) {
         footer += '<div class="st-ct-clear">解除绑定</div>';
     }
     return '<div class="st-ct-title">角色主题绑定</div>' +
-        '<div class="st-ct-char">当前角色：' + (curChar ? escapeHtml(curChar) : '未知') + '</div>' +
+        '<div class="st-ct-char">当前角色：' + (charName ? escapeHtml(charName) : '未知') + '</div>' +
         '<div class="st-ct-cur">' + curLine + '</div>' +
+        ownHint +
         '<div class="st-ct-search"><input type="text" id="st-ct-search" placeholder="搜索主题…" autocomplete="off"></div>' +
         '<div class="st-ct-list">' + rows + '</div>' +
         footer;
@@ -284,6 +329,9 @@ if (!document.getElementById(STYLE_ID)) {
 .st-ct-row.st-ct-bound { background:rgba(217,167,167,.28); }
 .st-ct-row-name { flex:1; min-width:0; white-space:normal; word-break:break-all; color:#D9A7A7; line-height:1.35; }
 .st-ct-row-tag { font-size:11px; opacity:.8; flex-shrink:0; margin-left:6px; white-space:nowrap; }
+.st-ct-own { background:rgba(217,167,167,.18); }
+.st-ct-own-tag { color:#D96A6A; font-weight:700; opacity:1; }
+.st-ct-own-hint { font-size:12px; margin-bottom:6px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.22); color:#F2C9C9; }
 .st-ct-auto { display:flex; align-items:center; gap:6px; margin-top:8px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.12); cursor:pointer; font-size:12px; }
 .st-ct-auto input { accent-color:#D9A7A7; }
 .st-ct-clear { margin-top:6px; text-align:center; padding:5px 0; border-radius:6px; color:#fff; background:rgba(190,90,90,.75); cursor:pointer; }
