@@ -149,6 +149,9 @@ function onCharChanged() {
             preBindTheme = null;
             setTheme(bind.theme);
             boundChar = cur;
+        } else {
+            // 进入无绑定/自动切换关闭的角色：编辑会话基准已不适用，丢弃避免残留污染后续恢复
+            preBindTheme = null;
         }
     }
     updateBtnDot();
@@ -307,19 +310,31 @@ function injectButton() {
 
 // 轮询：角色编辑面板打开时注入桃子按钮；可见性状态缓存，翻转时才动作（性能优化）
 let lastEditPanelVisible = false;
+let lastEditName = null; // 编辑面板当前编辑的角色名（切换编辑角色时按钮需跟随）
 setInterval(function () {
     const $panel = $('#rm_ch_create_block');
     const vis = !!($panel.length && $panel.is(':visible'));
     if (vis === lastEditPanelVisible) {
-        // 可见性未变：仅兜底补注入（按钮意外丢失时）
-        if (vis && !$('#' + BTN_ID).length) injectButton();
+        if (vis) {
+            const nm = String(($('#character_name_pole').val() || '')).trim();
+            if (nm !== lastEditName) {
+                // 编辑面板内切换了编辑角色：移除旧按钮重新注入（绑定上下文跟随当前角色）
+                lastEditName = nm;
+                $('#' + BTN_ID).remove();
+                injectButton();
+            } else if (!$('#' + BTN_ID).length) {
+                injectButton(); // 兜底补注入（按钮意外丢失时）
+            }
+        }
         return;
     }
     lastEditPanelVisible = vis;
     if (vis) {
+        lastEditName = String(($('#character_name_pole').val() || '')).trim();
         editSessionTheme = currentTheme(); // 记录本次编辑会话打开瞬间的主题（绑定恢复基准）
         injectButton();
     } else {
+        lastEditName = null;
         editSessionTheme = null;
         closePanel();
         $('#' + BTN_ID).remove();
@@ -365,7 +380,6 @@ if (!document.getElementById(STYLE_ID)) {
 .st-ct-auto input { accent-color:#D9A7A7; }
 .st-ct-clear { margin-top:6px; text-align:center; padding:5px 0; border-radius:6px; color:#fff; background:rgba(190,90,90,.75); cursor:pointer; }
 .st-ct-clear:hover { background:rgba(190,90,90,.95); }
-.st-ct-hint { margin-top:8px; text-align:center; font-size:11px; opacity:.6; }
 .st-ct-empty { text-align:center; padding:8px 0; opacity:.6; }
 `;
     document.head.appendChild(style);
