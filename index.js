@@ -13,6 +13,7 @@ let boundChar = null;   // 当前处于"绑定主题"的角色 avatar
 let themeBefore = null; // 进入该角色前的主题名
 let preBindTheme = null;   // 编辑面板绑定操作时的恢复基准主题（绑定前酒馆用的主题）
 let editSessionTheme = null; // 本次编辑面板会话打开瞬间的主题
+let themeChangeByUs = false; // 标记：主题切换是扩展自己触发的（不应视为用户手动切换）
 
 // ---------- 存储（兼容旧格式：{avatar: 'theme'} 字符串；带内存缓存避免重复 JSON.parse） ----------
 let bindingsCache = null;
@@ -80,8 +81,14 @@ function setTheme(name) {
     const exists = $sel.find('option').toArray().some(o => String(o.value) === name);
     if (!exists) return;
     if (String($sel.val()) === name) return;
+    themeChangeByUs = true; // 扩展自动切换：不视为用户手动改主题
     $sel.val(name).trigger('change');
 }
+// 用户手动切换主题 → 编辑会话的绑定恢复基准失效（用户已主动改变主题语境）
+$('#themes').on('change.stctTheme', function () {
+    if (themeChangeByUs) { themeChangeByUs = false; return; }
+    preBindTheme = null;
+});
 
 // ---------- 角色切换逻辑 ----------
 function getCurrentChar() {
@@ -149,10 +156,8 @@ function onCharChanged() {
             preBindTheme = null;
             setTheme(bind.theme);
             boundChar = cur;
-        } else {
-            // 进入无绑定/自动切换关闭的角色：编辑会话基准已不适用，丢弃避免残留污染后续恢复
-            preBindTheme = null;
         }
+        // 无绑定角色：保留 preBindTheme（用户未手动改主题则仍适用于之后进入的绑定角色）；手动改主题由 #themes change 监听清理
     }
     updateBtnDot();
 }
@@ -318,8 +323,9 @@ setInterval(function () {
         if (vis) {
             const nm = String(($('#character_name_pole').val() || '')).trim();
             if (nm !== lastEditName) {
-                // 编辑面板内切换了编辑角色：移除旧按钮重新注入（绑定上下文跟随当前角色）
+                // 编辑面板内切换了编辑角色：关闭旧绑定面板、移除旧按钮重新注入（绑定上下文跟随当前角色）
                 lastEditName = nm;
+                closePanel();
                 $('#' + BTN_ID).remove();
                 injectButton();
             } else if (!$('#' + BTN_ID).length) {
