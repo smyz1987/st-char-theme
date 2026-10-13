@@ -141,6 +141,7 @@ function buildPanelHTML(curChar, curBind) {
     return '<div class="st-ct-title">角色主题绑定</div>' +
         '<div class="st-ct-char">当前角色：' + (curChar ? escapeHtml(curChar) : '未知') + '</div>' +
         '<div class="st-ct-cur">' + curLine + '</div>' +
+        '<div class="st-ct-search"><input type="text" id="st-ct-search" placeholder="搜索主题…" autocomplete="off"></div>' +
         '<div class="st-ct-list">' + rows + '</div>' +
         footer;
 }
@@ -152,8 +153,12 @@ function refreshBinding() {
     if ($btn.length) $btn.toggleClass('st-ct-has-bind', !!(bind && bind.theme));
     const $panel = $('#' + PANEL_ID);
     if ($panel.length && $panel.is(':visible')) {
+        const q = String($panel.find('#st-ct-search').val() || '');
         $panel.html(buildPanelHTML(cur, bind));
         bindPanelEvents(cur, bind);
+        if (q) {
+            $panel.find('#st-ct-search').val(q).trigger('input');
+        }
     }
 }
 
@@ -173,6 +178,23 @@ function bindPanelEvents(curChar, curBind) {
         setBinding(curChar, '');
         refreshBinding();
     });
+    // 搜索过滤：实时按主题名过滤列表
+    $panel.off('input.stctSearch').on('input.stctSearch', '#st-ct-search', function () {
+        const q = String(this.value || '').trim().toLowerCase();
+        let shown = 0;
+        $panel.find('.st-ct-row').each(function () {
+            const t = String($(this).attr('data-theme') || '').toLowerCase();
+            const hit = !q || t.includes(q);
+            $(this).toggle(hit);
+            if (hit) shown++;
+        });
+        $panel.find('.st-ct-empty-search').remove();
+        if (shown === 0) {
+            $panel.find('.st-ct-list').append('<div class="st-ct-empty st-ct-empty-search">（无匹配主题）</div>');
+        }
+    });
+    // 面板内交互不冒泡（防止误触外部关闭逻辑）
+    $panel.on('mousedown.stct touchstart.stct', function (e) { e.stopPropagation(); });
 }
 
 function closePanel() {
@@ -183,7 +205,13 @@ function injectButton() {
     const $panel = $('#rm_ch_create_block');
     if (!$panel.length || !$panel.is(':visible')) return;
     const $btn = $('#' + BTN_ID);
-    if ($btn.length) { refreshBinding(); return; }
+    if ($btn.length) {
+        // 只更新红点状态，不重建面板（避免打断搜索输入/滚动）
+        const cur = getCurrentChar();
+        const bind = cur ? getBinding(cur) : null;
+        $btn.toggleClass('st-ct-has-bind', !!(bind && bind.theme));
+        return;
+    }
     const $anchor = $('#favorite_button');
     if (!$anchor.length) return;
     const $b = $('<div id="' + BTN_ID + '" class="st-ct-btn" title="绑定主题美化到这张角色卡">' + PEACH_SVG + '</div>');
@@ -219,8 +247,11 @@ setInterval(function () {
     }
 }, 400);
 
-// 点击面板/按钮以外区域关闭
+// 点击面板/按钮以外区域关闭（移动端：滑动后 300ms 内的合成 click 忽略，避免滑动列表误关面板）
+let lastTouchMove = 0;
+$(document).on('touchmove.stct', function () { lastTouchMove = Date.now(); });
 $(document).on('click.stct', function (e) {
+    if (Date.now() - lastTouchMove < 300) return;
     if (!$(e.target).closest('#' + BTN_ID).length && !$(e.target).closest('#' + PANEL_ID).length) {
         closePanel();
     }
@@ -240,10 +271,13 @@ if (!document.getElementById(STYLE_ID)) {
 .st-ct-char { font-size:12px; opacity:.75; margin-bottom:2px; word-break:break-all; }
 .st-ct-cur { font-size:12px; margin-bottom:8px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.12); }
 .st-ct-list { max-height:170px; overflow-y:auto; }
+.st-ct-search { margin-bottom:6px; }
+.st-ct-search input { width:100%; box-sizing:border-box; padding:5px 8px; border-radius:6px; border:1px solid var(--SmartThemeBorderColor,#666); background:var(--SmartThemeBlurTintColor,#2a2a3a); color:var(--SmartThemeMainColor,#e0e0e0); font-size:12px; outline:none; }
+.st-ct-search input::placeholder { opacity:.55; }
 .st-ct-row { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; cursor:pointer; }
 .st-ct-row:hover { background:rgba(217,167,167,.15); }
 .st-ct-row.st-ct-bound { background:rgba(217,167,167,.28); }
-.st-ct-row-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px; }
+.st-ct-row-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px; color:#D9A7A7; }
 .st-ct-row-tag { font-size:11px; opacity:.8; flex-shrink:0; margin-left:6px; }
 .st-ct-auto { display:flex; align-items:center; gap:6px; margin-top:8px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.12); cursor:pointer; font-size:12px; }
 .st-ct-auto input { accent-color:#D9A7A7; }
