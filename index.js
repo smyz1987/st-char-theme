@@ -139,6 +139,29 @@ function matchOwnTheme(themeName, charNameLow) {
     if (!t || t.length <= 1 || charNameLow.length <= 1) return false;
     return t.includes(charNameLow) || charNameLow.includes(t);
 }
+// 专属美化自动应用：找与角色名重叠的最佳主题（完全相等优先，否则取最短匹配）；无匹配返回 ''
+function findOwnTheme(charNameLow) {
+    if (!charNameLow || charNameLow.length <= 1) return '';
+    const themes = themeList();
+    let best = '';
+    for (const t of themes) {
+        const tl = String(t).toLowerCase().trim();
+        if (!tl || tl.length <= 1) continue;
+        if (tl === charNameLow) return t; // 完全相等最优先
+        if (tl.includes(charNameLow) || charNameLow.includes(tl)) {
+            if (!best || tl.length < best.length) best = t;
+        }
+    }
+    return best;
+}
+// 是否正在聊天中（编辑面板场景 characterId 为 -1）
+function inChat() {
+    try {
+        const ctx = getContext();
+        const id = (ctx && typeof ctx.characterId !== 'undefined') ? ctx.characterId : -1;
+        return id >= 0;
+    } catch { return false; }
+}
 function onCharChanged() {
     const cur = getCurrentChar();
     if (cur === boundChar) {
@@ -151,17 +174,23 @@ function onCharChanged() {
         themeBefore = null;
     }
     boundChar = null;
-    // 进入新角色：有绑定且自动切换开启才切换
+    // 进入新角色：手动绑定（自动切换开）优先；无手动绑定但有同名专属美化时自动应用（每次进入都生效）
     if (cur) {
         const bind = getBinding(cur);
+        let apply = null;
         if (bind && bind.theme && bind.autoApply) {
+            apply = bind.theme;
+        } else if (!bind || !bind.theme) {
+            apply = findOwnTheme(getCurrentCharName().toLowerCase().trim());
+        }
+        if (apply) {
             // 恢复基准：编辑面板绑定操作时的主题优先（解决"绑定后退出不恢复原美化"），否则用进入前的当前主题
             themeBefore = preBindTheme || currentTheme();
             preBindTheme = null;
-            setTheme(bind.theme);
+            setTheme(apply);
             boundChar = cur;
         }
-        // 无绑定角色：保留 preBindTheme（用户未手动改主题则仍适用于之后进入的绑定角色）；手动改主题由 #themes change 监听清理
+        // 无绑定且无专属匹配：保留 preBindTheme（用户未手动改主题则仍适用于之后进入的绑定角色）；手动改主题由 #themes change 监听清理
     }
     updateBtnDot();
 }
@@ -196,6 +225,8 @@ function buildPanelHTML(curChar, curBind) {
     let curLine = '未绑定（进入聊天不会自动切换）';
     if (curBind) {
         curLine = '已绑定：' + escapeHtml(curBind.theme) + (curBind.autoApply ? '（进入自动切换）' : '（自动切换已关闭）');
+    } else if (ownSet.size) {
+        curLine = '有 ' + ownSet.size + ' 个专属匹配，进入聊天会自动应用';
     }
     let ownHint = '';
     if (ownSet.size) {
@@ -237,8 +268,18 @@ function bindPanelEvents(curChar, curBind) {
         const theme = $(this).attr('data-theme');
         if (!theme) return;
         const auto = !!$panel.find('#st-ct-auto').prop('checked');
-        // 绑定操作以"本次编辑会话打开瞬间的主题"为恢复基准（绑定会立即应用主题，需记住绑定前用的是什么）
-        preBindTheme = editSessionTheme || currentTheme();
+        // 恢复基准：
+        // - 已在聊天中且该角色尚未进入"绑定恢复"状态：绑定操作时的当前主题即进入前主题（绑定前未切过主题）
+        // - 已在聊天中且已在恢复状态（专属自动应用过）：保留原恢复基准，不被本次换绑覆盖
+        // - 编辑面板场景（不在聊天）：用编辑会话起始主题，进入聊天时再消费
+        if (boundChar !== curChar) {
+            if (inChat()) {
+                themeBefore = currentTheme();
+                boundChar = curChar;
+            } else {
+                preBindTheme = editSessionTheme || currentTheme();
+            }
+        }
         setBinding(curChar, theme, auto);
         setTheme(theme); // 点击绑定立即应用该主题
         refreshBinding();
