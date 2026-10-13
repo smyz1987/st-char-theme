@@ -11,6 +11,8 @@ const PANEL_ID = 'st-ct-panel';
 
 let boundChar = null;   // 当前处于"绑定主题"的角色 avatar
 let themeBefore = null; // 进入该角色前的主题名
+let preBindTheme = null;   // 编辑面板绑定操作时的恢复基准主题（绑定前酒馆用的主题）
+let editSessionTheme = null; // 本次编辑面板会话打开瞬间的主题
 
 // ---------- 存储（兼容旧格式：{avatar: 'theme'} 字符串；带内存缓存避免重复 JSON.parse） ----------
 let bindingsCache = null;
@@ -142,7 +144,9 @@ function onCharChanged() {
     if (cur) {
         const bind = getBinding(cur);
         if (bind && bind.theme && bind.autoApply) {
-            themeBefore = currentTheme();
+            // 恢复基准：编辑面板绑定操作时的主题优先（解决"绑定后退出不恢复原美化"），否则用进入前的当前主题
+            themeBefore = preBindTheme || currentTheme();
+            preBindTheme = null;
             setTheme(bind.theme);
             boundChar = cur;
         }
@@ -221,6 +225,8 @@ function bindPanelEvents(curChar, curBind) {
         const theme = $(this).attr('data-theme');
         if (!theme) return;
         const auto = !!$panel.find('#st-ct-auto').prop('checked');
+        // 绑定操作以"本次编辑会话打开瞬间的主题"为恢复基准（绑定会立即应用主题，需记住绑定前用的是什么）
+        preBindTheme = editSessionTheme || currentTheme();
         setBinding(curChar, theme, auto);
         setTheme(theme); // 点击绑定立即应用该主题
         refreshBinding();
@@ -311,8 +317,10 @@ setInterval(function () {
     }
     lastEditPanelVisible = vis;
     if (vis) {
+        editSessionTheme = currentTheme(); // 记录本次编辑会话打开瞬间的主题（绑定恢复基准）
         injectButton();
     } else {
+        editSessionTheme = null;
         closePanel();
         $('#' + BTN_ID).remove();
     }
