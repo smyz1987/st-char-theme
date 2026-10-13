@@ -116,13 +116,16 @@ function getCurrentChar() {
         return c && c.avatar ? c.avatar : null;
     } catch { return null; }
 }
-// 当前角色的显示名（用于匹配专属美化）：优先读编辑面板的角色名输入框，兜底用聊天上下文
+// 当前角色的显示名（用于匹配专属美化）：仅编辑面板可见时读输入框，否则用聊天上下文角色名（避免输入框残留值污染专属匹配）
 function getCurrentCharName() {
     try {
-        const $name = $('#character_name_pole, #character_name').first();
-        if ($name.length) {
-            const v = String($name.val() || '').trim();
-            if (v) return v;
+        const $edit = $('#rm_ch_create_block');
+        if ($edit.length && $edit.is(':visible')) {
+            const $name = $('#character_name_pole, #character_name').first();
+            if ($name.length) {
+                const v = String($name.val() || '').trim();
+                if (v) return v;
+            }
         }
         const ctx = getContext();
         let id = (ctx && typeof ctx.characterId !== 'undefined') ? ctx.characterId : -1;
