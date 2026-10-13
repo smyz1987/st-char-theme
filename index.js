@@ -85,7 +85,8 @@ function setTheme(name) {
     $sel.val(name).trigger('change');
 }
 // 用户手动切换主题 → 编辑会话的绑定恢复基准失效（用户已主动改变主题语境）
-$('#themes').on('change.stctTheme', function () {
+// 用 document 委托挂载：扩展加载时 #themes 可能尚未渲染，直接挂会丢失监听
+$(document).on('change.stctTheme', '#themes', function () {
     if (themeChangeByUs) { themeChangeByUs = false; return; }
     preBindTheme = null;
 });
@@ -97,13 +98,16 @@ function getCurrentChar() {
         let id = (ctx && typeof ctx.characterId !== 'undefined') ? ctx.characterId : -1;
         if (id < 0 && typeof character_id !== 'undefined') id = character_id;
         if (id < 0 || !ctx || !ctx.characters || !ctx.characters[id]) {
-            // fallback：编辑面板头像字段（首页角色库直接编辑、未进入聊天时）
-            const $av = $('#avatar_url_pole');
-            if ($av.length) {
-                const v = String($av.val() || '').trim();
-                if (v) {
-                    const fn = v.split(/[\\/]/).pop();
-                    return fn || null;
+            // fallback：仅当编辑面板可见时读头像字段（首页加载时面板关闭，输入框残留值会误判成当前角色）
+            const $edit = $('#rm_ch_create_block');
+            if ($edit.length && $edit.is(':visible')) {
+                const $av = $('#avatar_url_pole');
+                if ($av.length) {
+                    const v = String($av.val() || '').trim();
+                    if (v) {
+                        const fn = v.split(/[\\/]/).pop();
+                        return fn || null;
+                    }
                 }
             }
             return null;
