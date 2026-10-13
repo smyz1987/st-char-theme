@@ -29,12 +29,12 @@ function getBinding(avatar) {
     if (typeof b === 'string') return { theme: b, autoApply: true };
     return { theme: b.theme || '', autoApply: b.autoApply !== false };
 }
-function setBinding(avatar, theme) {
+function setBinding(avatar, theme, autoApply) {
     if (!avatar) return;
     const map = loadBindings();
     if (theme) {
         const old = map[avatar];
-        map[avatar] = { theme: theme, autoApply: !old || old.autoApply !== false };
+        map[avatar] = { theme: theme, autoApply: (typeof autoApply === 'boolean') ? autoApply : (!old || old.autoApply !== false) };
     } else {
         delete map[avatar];
     }
@@ -133,10 +133,9 @@ function buildPanelHTML(curChar, curBind) {
     if (curBind) {
         curLine = '已绑定：' + escapeHtml(curBind.theme) + (curBind.autoApply ? '（进入自动切换）' : '（自动切换已关闭）');
     }
-    let footer = '<div class="st-ct-hint">点击上方主题即可绑定</div>';
+    let footer = '<label class="st-ct-auto"><input type="checkbox" id="st-ct-auto"' + (!curBind || curBind.autoApply ? ' checked' : '') + '> 进入该角色时自动切换</label>';
     if (curBind) {
-        footer = '<label class="st-ct-auto"><input type="checkbox" id="st-ct-auto"' + (curBind.autoApply ? ' checked' : '') + '> 进入该角色时自动切换</label>' +
-            '<div class="st-ct-clear">解除绑定</div>';
+        footer += '<div class="st-ct-clear">解除绑定</div>';
     }
     return '<div class="st-ct-title">角色主题绑定</div>' +
         '<div class="st-ct-char">当前角色：' + (curChar ? escapeHtml(curChar) : '未知') + '</div>' +
@@ -164,22 +163,28 @@ function refreshBinding() {
 
 function bindPanelEvents(curChar, curBind) {
     const $panel = $('#' + PANEL_ID);
-    $panel.off('.stct').on('click.stct', '.st-ct-row', function () {
+    $panel.off('.stct').on('click.stct', '.st-ct-row', function (e) {
+        e.stopPropagation();
         const theme = $(this).attr('data-theme');
         if (!theme) return;
-        setBinding(curChar, theme);
+        const auto = !!$panel.find('#st-ct-auto').prop('checked');
+        setBinding(curChar, theme, auto);
+        setTheme(theme); // 点击绑定立即应用该主题
         refreshBinding();
     });
-    $panel.off('change.stctAuto').on('change.stctAuto', '#st-ct-auto', function () {
+    $panel.off('change.stctAuto').on('change.stctAuto', '#st-ct-auto', function (e) {
+        e.stopPropagation();
         setAutoApply(curChar, this.checked);
         refreshBinding();
     });
-    $panel.off('click.stctClear').on('click.stctClear', '.st-ct-clear', function () {
+    $panel.off('click.stctClear').on('click.stctClear', '.st-ct-clear', function (e) {
+        e.stopPropagation();
         setBinding(curChar, '');
         refreshBinding();
     });
     // 搜索过滤：实时按主题名过滤列表
-    $panel.off('input.stctSearch').on('input.stctSearch', '#st-ct-search', function () {
+    $panel.off('input.stctSearch').on('input.stctSearch', '#st-ct-search', function (e) {
+        e.stopPropagation();
         const q = String(this.value || '').trim().toLowerCase();
         let shown = 0;
         $panel.find('.st-ct-row').each(function () {
@@ -266,19 +271,19 @@ if (!document.getElementById(STYLE_ID)) {
 #st-ct-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-left:6px; cursor:pointer; position:relative; vertical-align:middle; opacity:.85; transition:opacity .15s, transform .15s; background:rgba(217,167,167,.22); border-radius:6px; padding:2px; box-sizing:content-box; }
 #st-ct-btn:hover { opacity:1; transform:scale(1.12); }
 #st-ct-btn.st-ct-has-bind::after { content:''; position:absolute; top:-1px; right:-1px; width:7px; height:7px; border-radius:50%; background:#E8A0A0; border:1px solid #fff; }
-.st-ct-panel { position:fixed; z-index:99999; width:220px; max-height:300px; overflow-y:auto; background:var(--SmartThemeBlurTintColor,#1e1e2e); color:var(--SmartThemeMainColor,#e0e0e0); border:1px solid var(--SmartThemeBorderColor,#666); border-radius:10px; padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.35); font-size:13px; }
+.st-ct-panel { position:fixed; z-index:99999; width:min(320px,calc(100vw - 24px)); max-height:340px; overflow-y:auto; background:var(--SmartThemeBlurTintColor,#1e1e2e); color:var(--SmartThemeMainColor,#e0e0e0); border:1px solid var(--SmartThemeBorderColor,#666); border-radius:10px; padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.35); font-size:13px; }
 .st-ct-title { font-weight:700; margin-bottom:6px; color:#D9A7A7; }
 .st-ct-char { font-size:12px; opacity:.75; margin-bottom:2px; word-break:break-all; }
 .st-ct-cur { font-size:12px; margin-bottom:8px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.12); }
-.st-ct-list { max-height:170px; overflow-y:auto; }
+.st-ct-list { max-height:210px; overflow-y:auto; }
 .st-ct-search { margin-bottom:6px; }
 .st-ct-search input { width:100%; box-sizing:border-box; padding:5px 8px; border-radius:6px; border:1px solid var(--SmartThemeBorderColor,#666); background:var(--SmartThemeBlurTintColor,#2a2a3a); color:var(--SmartThemeMainColor,#e0e0e0); font-size:12px; outline:none; }
 .st-ct-search input::placeholder { opacity:.55; }
-.st-ct-row { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; cursor:pointer; }
+.st-ct-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; }
 .st-ct-row:hover { background:rgba(217,167,167,.15); }
 .st-ct-row.st-ct-bound { background:rgba(217,167,167,.28); }
-.st-ct-row-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px; color:#D9A7A7; }
-.st-ct-row-tag { font-size:11px; opacity:.8; flex-shrink:0; margin-left:6px; }
+.st-ct-row-name { flex:1; min-width:0; white-space:normal; word-break:break-all; color:#D9A7A7; line-height:1.35; }
+.st-ct-row-tag { font-size:11px; opacity:.8; flex-shrink:0; margin-left:6px; white-space:nowrap; }
 .st-ct-auto { display:flex; align-items:center; gap:6px; margin-top:8px; padding:4px 8px; border-radius:6px; background:rgba(217,167,167,.12); cursor:pointer; font-size:12px; }
 .st-ct-auto input { accent-color:#D9A7A7; }
 .st-ct-clear { margin-top:6px; text-align:center; padding:5px 0; border-radius:6px; color:#fff; background:rgba(190,90,90,.75); cursor:pointer; }
