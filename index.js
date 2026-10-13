@@ -187,9 +187,15 @@ function onCharChanged() {
             apply = findOwnTheme(getCurrentCharName().toLowerCase().trim());
         }
         if (apply) {
-            // 恢复基准：编辑面板绑定操作时的主题优先（解决"绑定后退出不恢复原美化"），否则用进入前的当前主题
-            themeBefore = preBindTheme || currentTheme();
-            preBindTheme = null;
+            if (bind && bind.theme && bind.autoApply) {
+                // 手动绑定：恢复基准优先用编辑会话绑定时的主题（解决"绑定后退出不恢复原美化"），否则用进入前的当前主题
+                themeBefore = preBindTheme || currentTheme();
+                preBindTheme = null;
+            } else {
+                // 专属自动应用：不消费 preBindTheme（那是给手动绑定角色用的恢复基准，先进无绑定角色再进绑定角色时仍要生效）；
+                // 恢复基准 = 进入该角色前的当前主题
+                themeBefore = currentTheme();
+            }
             setTheme(apply);
             boundChar = cur;
         }
