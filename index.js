@@ -12,12 +12,16 @@ const PANEL_ID = 'st-ct-panel';
 let boundChar = null;   // 当前处于"绑定主题"的角色 avatar
 let themeBefore = null; // 进入该角色前的主题名
 
-// ---------- 存储（兼容旧格式：{avatar: 'theme'} 字符串） ----------
+// ---------- 存储（兼容旧格式：{avatar: 'theme'} 字符串；带内存缓存避免重复 JSON.parse） ----------
+let bindingsCache = null;
 function loadBindings() {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
-    catch { return {}; }
+    if (bindingsCache) return bindingsCache;
+    try { bindingsCache = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+    catch { bindingsCache = {}; }
+    return bindingsCache;
 }
 function saveBindings(map) {
+    bindingsCache = map;
     try { localStorage.setItem(LS_KEY, JSON.stringify(map)); }
     catch { /* ignore */ }
 }
@@ -115,17 +119,19 @@ function getCurrentCharName() {
         return c ? String(c.name || '') : '';
     } catch { return ''; }
 }
-// 专属匹配：主题名与角色名存在完全包含关系（双向），长度须 >1 防误判
-function matchOwnTheme(themeName, charName) {
-    if (!charName) return false;
+// 专属匹配：主题名与角色名存在完全包含关系（双向），长度须 >1 防误判；charNameLow 为已小写的角色名
+function matchOwnTheme(themeName, charNameLow) {
+    if (!charNameLow) return false;
     const t = String(themeName || '').toLowerCase().trim();
-    const c = String(charName).toLowerCase().trim();
-    if (!t || !c || t.length <= 1 || c.length <= 1) return false;
-    return t.includes(c) || c.includes(t);
+    if (!t || t.length <= 1 || charNameLow.length <= 1) return false;
+    return t.includes(charNameLow) || charNameLow.includes(t);
 }
 function onCharChanged() {
     const cur = getCurrentChar();
-    if (cur === boundChar) return;
+    if (cur === boundChar) {
+        updateBtnDot();
+        return;
+    }
     // 离开上一个绑定角色 → 恢复进入前主题
     if (boundChar && themeBefore) {
         setTheme(themeBefore);
@@ -141,6 +147,7 @@ function onCharChanged() {
             boundChar = cur;
         }
     }
+    updateBtnDot();
 }
 eventSource.on(event_types.CHAT_CHANGED, onCharChanged);
 eventSource.on(event_types.CHAT_LOADED, onCharChanged);
@@ -156,12 +163,13 @@ function buildPanelHTML(curChar, curBind) {
     const themes = themeList();
     const curTheme = currentTheme();
     const charName = getCurrentCharName();
-    const own = themes.filter(t => matchOwnTheme(t, charName));
-    const ordered = own.concat(themes.filter(t => !matchOwnTheme(t, charName)));
+    const charNameLow = charName.toLowerCase().trim();
+    const ownSet = new Set(themes.filter(t => matchOwnTheme(t, charNameLow)));
+    const ordered = themes.filter(t => ownSet.has(t)).concat(themes.filter(t => !ownSet.has(t)));
     let rows = ordered.map(t => {
         const isBound = (curBind && t === curBind.theme);
         const isActive = (!curBind && t === curTheme);
-        const isOwn = own.includes(t);
+        const isOwn = ownSet.has(t);
         return '<div class="st-ct-row' + (isBound ? ' st-ct-bound' : '') + (isOwn ? ' st-ct-own' : '') + '" data-theme="' + escapeHtml(t) + '">' +
             '<span class="st-ct-row-name">' + escapeHtml(t) + '</span>' +
             (isOwn ? '<span class="st-ct-row-tag st-ct-own-tag">专属</span>' : '') +
@@ -174,8 +182,8 @@ function buildPanelHTML(curChar, curBind) {
         curLine = '已绑定：' + escapeHtml(curBind.theme) + (curBind.autoApply ? '（进入自动切换）' : '（自动切换已关闭）');
     }
     let ownHint = '';
-    if (own.length) {
-        ownHint = '<div class="st-ct-own-hint">已匹配 ' + own.length + ' 个专属美化（名字与角色重叠），已排在列表最前</div>';
+    if (ownSet.size) {
+        ownHint = '<div class="st-ct-own-hint">已匹配 ' + ownSet.size + ' 个专属美化（名字与角色重叠），已排在列表最前</div>';
     }
     let footer = '<label class="st-ct-auto"><input type="checkbox" id="st-ct-auto"' + (!curBind || curBind.autoApply ? ' checked' : '') + '> 进入该角色时自动切换</label>';
     if (curBind) {
@@ -251,17 +259,22 @@ function closePanel() {
     $('#' + PANEL_ID).remove();
 }
 
+// 更新按钮红点（事件驱动：绑定写入/角色切换时调用，轮询不再查）
+function updateBtnDot() {
+    const $btn = $('#' + BTN_ID);
+    if (!$btn.length) return;
+    const cur = getCurrentChar();
+    const bind = cur ? getBinding(cur) : null;
+    $btn.toggleClass('st-ct-has-bind', !!(bind && bind.theme));
+}
+
 function injectButton() {
     const $panel = $('#rm_ch_create_block');
     if (!$panel.length || !$panel.is(':visible')) return;
     const $btn = $('#' + BTN_ID);
-    if ($btn.length) {
-        // 只更新红点状态，不重建面板（避免打断搜索输入/滚动）
-        const cur = getCurrentChar();
-        const bind = cur ? getBinding(cur) : null;
-        $btn.toggleClass('st-ct-has-bind', !!(bind && bind.theme));
-        return;
-    }
+    if ($btn.length) return; // 已注入，轮询不重复操作（红点由事件驱动更新）
+    const cur = getCurrentChar();
+    if (!cur) return; // 无法识别当前角色（如新建角色）→ 不注入，避免无效绑定
     const $anchor = $('#favorite_button');
     if (!$anchor.length) return;
     const $b = $('<div id="' + BTN_ID + '" class="st-ct-btn" title="绑定主题美化到这张角色卡">' + PEACH_SVG + '</div>');
@@ -269,31 +282,39 @@ function injectButton() {
     $b.on('click', function (e) {
         e.stopPropagation();
         if ($('#' + PANEL_ID).length) { closePanel(); return; }
-        const cur = getCurrentChar();
         const bind = cur ? getBinding(cur) : null;
         const $panel = $('<div id="' + PANEL_ID + '" class="st-ct-panel"></div>');
         $panel.html(buildPanelHTML(cur, bind));
         $('body').append($panel);
+        // 定位：完整放在视口内（手机上不再被顶部/底部遮挡）
         const r = $b[0].getBoundingClientRect();
         const pw = $panel[0].offsetWidth;
+        const ph = $panel[0].offsetHeight;
         $panel.css({
-            top: Math.min(r.bottom + 6, window.innerHeight - 40) + 'px',
+            top: Math.max(8, Math.min(r.bottom + 6, window.innerHeight - ph - 8)) + 'px',
             left: Math.max(8, Math.min(r.left, window.innerWidth - pw - 8)) + 'px',
         });
         bindPanelEvents(cur, bind);
     });
-    refreshBinding();
+    updateBtnDot();
 }
 
-// 轮询：角色编辑面板打开时注入桃子按钮
+// 轮询：角色编辑面板打开时注入桃子按钮；可见性状态缓存，翻转时才动作（性能优化）
+let lastEditPanelVisible = false;
 setInterval(function () {
     const $panel = $('#rm_ch_create_block');
-    if ($panel.length && $panel.is(':visible')) {
+    const vis = !!($panel.length && $panel.is(':visible'));
+    if (vis === lastEditPanelVisible) {
+        // 可见性未变：仅兜底补注入（按钮意外丢失时）
+        if (vis && !$('#' + BTN_ID).length) injectButton();
+        return;
+    }
+    lastEditPanelVisible = vis;
+    if (vis) {
         injectButton();
-    } else if ($('#' + PANEL_ID).length) {
+    } else {
         closePanel();
-        const $btn = $('#' + BTN_ID);
-        if ($btn.length) $btn.remove();
+        $('#' + BTN_ID).remove();
     }
 }, 400);
 
